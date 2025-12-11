@@ -3,14 +3,14 @@ import google.generativeai as genai
 from pypdf import PdfReader
 import time
 
-# --- 1. CONFIGURAÇÃO DA PÁGINA (Deve ser a primeira coisa) ---
+# --- 1. CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
     page_title="Auditor HRSJC - Sequencial", 
     page_icon="🏥", 
     layout="wide"
 )
 
-# --- 2. GERENCIAMENTO DE ESTADO (MEMÓRIA) ---
+# --- 2. GERENCIAMENTO DE ESTADO ---
 if 'accumulated_text' not in st.session_state:
     st.session_state.accumulated_text = ""
 if 'file_list' not in st.session_state:
@@ -61,7 +61,6 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/3063/3063176.png", width=100)
     st.title("Painel de Controle")
     
-    # Verifica Secrets ou pede manual
     if "GOOGLE_API_KEY" in st.secrets:
         api_key = st.secrets["GOOGLE_API_KEY"]
         st.success("✅ API Key Conectada!")
@@ -70,7 +69,6 @@ with st.sidebar:
     
     st.divider()
     
-    # Botão de Reset
     if st.button("🗑️ Limpar Tudo (Reset)"):
         st.session_state.accumulated_text = ""
         st.session_state.file_list = []
@@ -81,8 +79,6 @@ with st.sidebar:
 st.title("🏥 Auditoria Sequencial - HRSJC")
 st.markdown("### Adicione os meses um por um para evitar erros de memória.")
 
-# --- DEFINIÇÃO DAS COLUNAS (AQUI ESTAVA O ERRO ANTERIOR) ---
-# Criamos as variáveis col1 e col2 explicitamente antes de usá-las
 col1, col2 = st.columns(2)
 
 # --- COLUNA 1: UPLOAD ---
@@ -90,7 +86,6 @@ with col1:
     st.subheader("1. Adicionar Arquivo")
     st.info("Faça o upload de UM mês, espere processar e repita.")
     
-    # Chave dinâmica para limpar o uploader após uso
     current_key = f"uploader_{st.session_state.uploader_key}"
     
     uploaded_file = st.file_uploader(
@@ -108,17 +103,13 @@ with col1:
                     for page in reader.pages:
                         text_extracted += page.extract_text() or ""
                     
-                    # Salva na memória
                     st.session_state.accumulated_text += text_extracted
                     st.session_state.file_list.append(uploaded_file.name)
-                    
-                    # Incrementa key para limpar o campo
                     st.session_state.uploader_key += 1
                     
                     st.success(f"✅ {uploaded_file.name} salvo!")
                     time.sleep(1)
                     st.rerun()
-                    
                 except Exception as e:
                     st.error(f"Erro ao ler arquivo: {e}")
 
@@ -134,9 +125,8 @@ with col2:
 
 st.divider()
 
-# --- 6. GERAÇÃO FINAL ---
+# --- 6. GERAÇÃO FINAL COM TRATAMENTO DE ERRO DE MODELO ---
 st.subheader("3. Gerar Relatório Anual")
-st.markdown("Quando terminar de adicionar todos os meses, clique abaixo.")
 
 if st.button("🚀 GERAR RELATÓRIO COMPLETO", type="primary"):
     if not api_key:
@@ -147,20 +137,37 @@ if st.button("🚀 GERAR RELATÓRIO COMPLETO", type="primary"):
         try:
             with st.spinner('🧠 O Auditor está analisando todos os meses compilados...'):
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                
+                # --- SISTEMA DE TENTATIVA DE MODELOS ---
+                # Tenta modelos em ordem de preferência até um funcionar
+                response = None
+                model_names = ['gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-1.5-pro-latest', 'gemini-pro']
                 
                 final_prompt = f"{SYSTEM_PROMPT}\n\nDADOS ACUMULADOS:\n{st.session_state.accumulated_text}"
                 
-                response = model.generate_content(final_prompt)
+                last_error = ""
                 
-                st.markdown("## 📊 Relatório Final")
-                st.write(response.text)
+                for model_name in model_names:
+                    try:
+                        # Tenta usar o modelo atual da lista
+                        model = genai.GenerativeModel(model_name)
+                        response = model.generate_content(final_prompt)
+                        break # Se funcionou, sai do loop
+                    except Exception as e:
+                        last_error = e
+                        continue # Se deu erro, tenta o próximo nome
                 
-                st.download_button(
-                    label="📥 Baixar Relatório (.md)",
-                    data=response.text,
-                    file_name="Relatorio_Anual_HRSJC_2025.md",
-                    mime="text/markdown"
-                )
+                if response:
+                    st.markdown("## 📊 Relatório Final")
+                    st.write(response.text)
+                    st.download_button(
+                        label="📥 Baixar Relatório (.md)",
+                        data=response.text,
+                        file_name="Relatorio_Anual_HRSJC_2025.md",
+                        mime="text/markdown"
+                    )
+                else:
+                    st.error(f"Não foi possível gerar com nenhum modelo. Erro final: {last_error}")
+
         except Exception as e:
-            st.error(f"Erro na geração: {e}")
+            st.error(f"Erro crítico: {e}")
