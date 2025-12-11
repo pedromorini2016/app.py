@@ -58,7 +58,7 @@ if st.button("GERAR RELATÓRIO ANUAL DE INTELIGÊNCIA", type="primary"):
             with st.spinner('⏳ O Auditor está lendo os arquivos e processando o Valuation... Isso pode levar alguns instantes.'):
                 # 1. Configurar o Modelo
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-1.5-pro-latest') # Modelo mais inteligente
+               model = genai.GenerativeModel('gemini-1.5-pro')
                 
                 # 2. Extrair texto dos PDFs
                 raw_text = get_pdf_text(uploaded_files)
